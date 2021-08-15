@@ -1,0 +1,493 @@
+# Bible Indexing
+
+## Download King James Bible
+
+```elixir
+# Download Bible
+Mix.install([{:httpoison, "~> 1.8"}, {:stemmer, "~> 1.0"}, {:flow, "~> 1.1"}])
+%{body: bible} = HTTPoison.get!("https://www.gutenberg.org/files/10/10-0.txt")
+```
+
+## Split the Bible into lines of text
+
+```elixir
+all_lines = String.split(bible, "\r\n")
+IO.puts(Enum.count(all_lines))
+
+lines =
+  all_lines
+  |> Enum.drop(99)
+  |> Enum.reverse()
+  |> Enum.drop(353)
+  |> Enum.reverse()
+
+last_line_of_revelation = Enum.count(lines) - 1
+```
+
+## Find the start of Genesis
+
+```elixir
+lines
+|> Enum.take(8)
+```
+
+## Find the end of Revelation
+
+```elixir
+lines |> Enum.drop(last_line_of_revelation)
+```
+
+## Re-combine remaining text lines
+
+```elixir
+recombined_text =
+  lines
+  |> Enum.join("\n")
+```
+
+## Remove KJV book titles between verses
+
+```elixir
+full_book_names = [
+  "The First Book of Moses:  Called Genesis",
+  "The Second Book of Moses: Called Exodus",
+  "The Third Book of Moses: Called Leviticus",
+  "The Fourth Book of Moses: Called Numbers",
+  "The Fifth Book of Moses: Called Deuteronomy",
+  "The Book of Joshua",
+  "The Book of Judges",
+  "The Book of Ruth",
+  "The First Book of Samuel",
+  "The Second Book of Samuel",
+  "The First Book of the Kings",
+  "The Second Book of the Kings",
+  "The First Book of the Chronicles",
+  "The Second Book of the Chronicles",
+  "Ezra",
+  "The Book of Nehemiah",
+  "The Book of Esther",
+  "The Book of Job",
+  "The Book of Psalms",
+  "The Proverbs",
+  "Ecclesiastes",
+  "The Song of Solomon",
+  "The Book of the Prophet Isaiah",
+  "The Book of the Prophet Jeremiah",
+  "The Lamentations of Jeremiah",
+  "The Book of the Prophet Ezekiel",
+  "The Book of Daniel",
+  "Hosea",
+  "Joel",
+  "Amos",
+  "Obadiah",
+  "Jonah",
+  "Micah",
+  "Nahum",
+  "Habakkuk",
+  "Zephaniah",
+  "Haggai",
+  "Zechariah",
+  "Malachi",
+  "The Gospel According to Saint Matthew",
+  "The Gospel According to Saint Mark",
+  "The Gospel According to Saint Luke",
+  "The Gospel According to Saint John",
+  "The Acts of the Apostles",
+  "The Epistle of Paul the Apostle to the Romans",
+  "The First Epistle of Paul the Apostle to the Corinthians",
+  "The Second Epistle of Paul the Apostle to the Corinthians",
+  "The Epistle of Paul the Apostle to the Galatians",
+  "The Epistle of Paul the Apostle to the Ephesians",
+  "The Epistle of Paul the Apostle to the Philippians",
+  "The Epistle of Paul the Apostle to the Colossians",
+  "The First Epistle of Paul the Apostle to the Thessalonians",
+  "The Second Epistle of Paul the Apostle to the Thessalonians",
+  "The First Epistle of Paul the Apostle to Timothy",
+  "The Second Epistle of Paul the Apostle to Timothy",
+  "The Epistle of Paul the Apostle to Titus",
+  "The Epistle of Paul the Apostle to Philemon",
+  "The Epistle of Paul the Apostle to the Hebrews",
+  "The General Epistle of James",
+  "The First Epistle General of Peter",
+  "The Second General Epistle of Peter",
+  "The First Epistle General of John",
+  "The Second Epistle General of John",
+  "The Third Epistle General of John",
+  "The General Epistle of Jude",
+  "The Revelation of Saint John the Divine"
+]
+
+raw_verses =
+  Enum.reduce(full_book_names, recombined_text, fn title, body ->
+    String.replace(body, "\n\n\n\n#{title}\n\n", "")
+  end)
+```
+
+## Find verse labels
+
+```elixir
+verse_match = ~r/(?<chapter>\d+):(?<verse>\d+)/
+
+verse_labels =
+  recombined_text
+  |> String.split(~r/\s/)
+  |> Enum.map(fn line ->
+    Regex.named_captures(verse_match, line)
+  end)
+  |> Enum.filter(fn x -> !is_nil(x) end)
+  |> Enum.map(fn chapter_verse ->
+    chapter = String.to_integer(Map.get(chapter_verse, "chapter"))
+    verse = String.to_integer(Map.get(chapter_verse, "verse"))
+
+    %{
+      chapter: chapter,
+      verse: verse
+    }
+  end)
+```
+
+## Find text of each verse
+
+```elixir
+verse_list =
+  raw_verses
+  |> String.split(~r/\d+:\d+/)
+  |> Enum.map(&String.trim/1)
+  |> Enum.drop(1)
+
+IO.puts(Enum.count(verse_list))
+
+verse_list
+```
+
+```elixir
+content =
+  verse_list
+  |> :erlang.term_to_binary()
+  |> :zlib.gzip()
+
+File.write!("verse_list.data", content)
+```
+
+## Include verse text in the verse array
+
+```elixir
+verse_database =
+  verse_labels
+  |> Enum.with_index()
+  |> Enum.zip(verse_list)
+  |> Enum.map(fn {{coordinate, index}, text} ->
+    {coordinate, index, text}
+  end)
+```
+
+## Index the Bible by book
+
+```elixir
+books_of_the_bible = [
+  "Genesis",
+  "Exodus",
+  "Leviticus",
+  "Numbers",
+  "Deuteronomy",
+  "Joshua",
+  "Judges",
+  "Ruth",
+  "First Samuel",
+  "Second Samuel",
+  "First Kings",
+  "Second Kings",
+  "First Chronicles",
+  "Second Chronicles",
+  "Ezra",
+  "Nehemiah",
+  "Esther",
+  "Job",
+  "Psalms",
+  "Proverbs",
+  "Ecclesiastes",
+  "Song of Solomon",
+  "Isaiah",
+  "Jeremiah",
+  "Lamentations",
+  "Ezekiel",
+  "Daniel",
+  "Hosea",
+  "Joel",
+  "Amos",
+  "Obadiah",
+  "Jonah",
+  "Micah",
+  "Nahum",
+  "Habakkuk",
+  "Zephaniah",
+  "Haggai",
+  "Zechariah",
+  "Malachi",
+  "Matthew",
+  "Mark",
+  "Luke",
+  "John",
+  "Acts",
+  "Romans",
+  "First Corinthians",
+  "Second Corinthians",
+  "Galatians",
+  "Ephesians",
+  "Philippians",
+  "Colossians",
+  "First Thessalonians",
+  "Second Thessalonians",
+  "First Timothy",
+  "Second Timothy",
+  "Titus",
+  "Philemon",
+  "Hebrews",
+  "James",
+  "First Peter",
+  "Second Peter",
+  "First John",
+  "Second John",
+  "Third John",
+  "Jude",
+  "Revelation"
+]
+
+chapter1_indexes =
+  verse_database
+  |> Enum.filter(fn {coordinate, _index, _text} -> coordinate == %{chapter: 1, verse: 1} end)
+
+starting_verse_book_index =
+  Enum.zip(chapter1_indexes, books_of_the_bible)
+  |> Enum.map(fn {{coordinate, index, _text}, book} ->
+    {Map.put(coordinate, :book, book), index}
+  end)
+```
+
+## Book verse ranges
+
+```elixir
+starting_verse_index =
+  starting_verse_book_index
+  |> Enum.map(fn {k, v} -> {v, k} end)
+  |> Enum.sort()
+  |> Enum.chunk_every(2, 1)
+  |> Enum.map(fn
+    [{verse_ref, %{book: "Revelation"}}] ->
+      {"Revelation", {verse_ref, last_line_of_revelation}}
+
+    [{a_ref, %{book: book}}, {b_ref, _b_coord}] ->
+      {book, {a_ref, b_ref - 1}}
+  end)
+
+book_index =
+  starting_verse_index
+  |> Map.new()
+```
+
+## Verse index
+
+```elixir
+find_book = fn verse_id ->
+  starting_verse_index
+  |> Enum.find(fn {_book, {low, high}} -> verse_id in low..high end)
+  |> elem(0)
+end
+
+verse_labels_list =
+  verse_labels
+  |> Enum.with_index()
+  |> Enum.map(fn {coordinate, index} ->
+    Map.put(coordinate, :book, find_book.(index))
+  end)
+
+verse_index =
+  verse_labels_list
+  |> Enum.with_index()
+  |> Map.new()
+
+reverse_verse_index =
+  verse_index
+  |> Enum.map(fn {k, v} -> {v, k} end)
+  |> Map.new()
+```
+
+```elixir
+content =
+  reverse_verse_index
+  |> :erlang.term_to_binary()
+  |> :zlib.gzip()
+
+File.write!("reverse_verse_index.data", content)
+```
+
+## How many verses in the Bible?
+
+```elixir
+Enum.count(verse_labels)
+```
+
+## Find the start of the book of John
+
+```elixir
+verse_tuple = verse_list |> List.to_tuple()
+
+{low, high} = Map.get(book_index, "John")
+IO.puts(elem(verse_tuple, low))
+```
+
+## Expand lines of text around the line searched for context
+
+```elixir
+report_verse = fn verse_number ->
+  {verse_number, Map.get(reverse_verse_index, verse_number),
+   0..4 |> Enum.map(&elem(verse_tuple, max(0, verse_number + &1)))}
+end
+
+{low, high} = Map.get(book_index, "John")
+
+report_verse.(low)
+```
+
+## Verse Search
+
+<!-- livebook:{"livebook_object":"cell_input","name":"book","reactive":true,"type":"text","value":"Esther"} -->
+
+<!-- livebook:{"livebook_object":"cell_input","name":"chapter","reactive":true,"type":"number","value":"8"} -->
+
+<!-- livebook:{"livebook_object":"cell_input","name":"verse","reactive":true,"type":"number","value":"9"} -->
+
+```elixir
+book =
+  IO.gets("book")
+  |> String.trim()
+
+chapter =
+  IO.gets("chapter")
+  |> String.trim()
+  |> String.to_integer()
+
+verse =
+  IO.gets("verse")
+  |> String.trim()
+  |> String.to_integer()
+
+key = %{book: book, chapter: chapter, verse: verse}
+IO.puts("#{book} #{chapter}:#{verse}\n#{}")
+verse_index = Map.get(verse_index, key)
+
+IO.puts(elem(verse_tuple, verse_index))
+```
+
+## String sanitization
+
+When searching for exact text from imprefect human memory, we are often wrong in terms of tense, geneder, number, etc.  It would be nice to remove these sources of innacuracy from consideration.  We can approximate this approach with a technique called *stemming*.   In this process, a word is converted into a root string of letters.  In fact, these may not be an English word!
+
+```elixir
+string_sanitization = fn line ->
+  line = String.replace(line, ~r/\d+:\d+/, "")
+
+  Regex.split(~r/\W/, line)
+  |> Enum.filter(fn x -> x != "" end)
+  |> Enum.map(&String.downcase/1)
+  |> Enum.uniq()
+  |> Enum.map(&Stemmer.stem/1)
+end
+
+string_sanitization.("Jesus wept.")
+```
+
+## Create word index
+
+```elixir
+# with Flow
+word_index =
+  verse_list
+  |> Stream.with_index()
+  |> Flow.from_enumerable()
+  |> Flow.map(fn {verse, number} ->
+    {string_sanitization.(verse), number}
+  end)
+  |> Flow.filter(fn {x, _} -> x != [] end)
+  |> Enum.to_list()
+
+# With Enum
+# verse_list
+# |> Enum.with_index()
+# |> Enum.map(fn {verse, number} -> 
+#   {string_sanitization.(verse), number} end)
+# |> Enum.filter(fn {x, _} -> x != [] end)
+```
+
+## Create Inverse index of words
+
+```elixir
+reverse_index =
+  word_index
+  |> Enum.flat_map(fn {words, line} ->
+    Enum.map(words, fn word -> {word, line} end)
+  end)
+  |> Enum.reduce(%{}, fn {word, line_number}, acc ->
+    word_refs = Map.get(acc, word, [])
+    Map.put(acc, word, [line_number | word_refs])
+  end)
+  |> Enum.map(fn {k, v} -> {k, Enum.sort(v)} end)
+  |> Map.new()
+```
+
+```elixir
+reverse_index =
+  reverse_index
+  |> Enum.filter(fn {_k, list} -> Enum.count(list) < 1000 end)
+  |> Map.new()
+```
+
+```elixir
+content =
+  reverse_index
+  |> :erlang.term_to_binary()
+  |> :zlib.gzip()
+
+File.write!("inverse_index.data", content)
+```
+
+## Search from inverse index
+
+```elixir
+jesus = Map.get(reverse_index, "jesus")
+wept = Map.get(reverse_index, "wept")
+
+Enum.frequencies(jesus ++ wept)
+|> Enum.filter(fn {_k, v} -> v > 1 end)
+|> Enum.map(fn {line, _} -> line end)
+|> Enum.map(fn line_number ->
+  {line_number, IO.puts(elem(verse_tuple, line_number)), elem(verse_tuple, line_number)}
+end)
+```
+
+## Search the Bible
+
+<!-- livebook:{"livebook_object":"cell_input","name":"query","reactive":true,"type":"text","value":""} -->
+
+```elixir
+input =
+  IO.gets("query")
+  |> string_sanitization.()
+  |> Enum.flat_map(fn word ->
+    Map.get(reverse_index, word, [])
+  end)
+  |> Enum.frequencies()
+  #  |> Enum.filter(fn {_k, v} -> v > 1 end)
+  |> Enum.group_by(fn {_k, v} -> v end)
+  |> Enum.sort(&(&1 > &2))
+  |> Enum.take(1)
+  |> Enum.flat_map(fn {_, list} -> list end)
+  |> Enum.sort(fn {k1, v1}, {k2, v2} -> {k2, v1} > {k1, v2} end)
+  |> Enum.map(fn {verse_number, _} -> verse_number end)
+  |> Enum.map(fn verse_number ->
+    %{book: book, chapter: chapter, verse: verse} = Map.get(reverse_verse_index, verse_number)
+    IO.puts("#{book} #{chapter}:#{verse}")
+    IO.puts(elem(verse_tuple, verse_number))
+    {verse_number, Map.get(reverse_verse_index, verse_number), elem(verse_tuple, verse_number)}
+  end)
+```

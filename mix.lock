@@ -1,0 +1,3 @@
+%{
+  "stemmer": {:hex, :stemmer, "1.0.2", "b695c5fc40b25194206cbcabb081b982e6369c84dcdb9574f563b6ced3cdc92c", [:mix], [], "hexpm", "7a4e1dd4adfd604478828944ea33f435f117efce8e77e1cfc28e90bfd833f37f"},
+}
